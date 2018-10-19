@@ -8,7 +8,7 @@ Rather than having to setup email smarthost and all that 70's stuff.  You can cr
  1. ./do-awesome-stuff.sh does its thing.
  2. the '&&' says if and only if ./do-awesome-stuff.sh exits successfully run stanna
  3. stanna posts the message to Slack
- 4. waits the configured timeout (just in case you want to login and abort the shutdown)
+ 4. waits the configured timeout (just in case you want to login and `stanna abort` the shutdown)
  5. system is haulted.
 
 A simple configuration looks like this:
