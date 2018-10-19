@@ -1,6 +1,6 @@
 {
   "name": "stanna",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Halt your machine after sending notification and waiting specified time limit",
   "main": "index.js",
   "scripts": {
@@ -20,11 +20,11 @@
   },
   "homepage": "https://github.com/sio2boss/stanna#readme",
   "dependencies": {
-    "chalk": "^1.1.3",
-    "jsonfile": "^2.4.0",
-    "neodoc": "^1.1.2",
-    "shelljs": "^0.7.4",
+    "chalk": "^2.4.1",
+    "jsonfile": "^5.0.0",
+    "neodoc": "^2.0.2",
+    "shelljs": "^0.8.2",
     "slack-node": "^0.1.8",
-    "sleep": "^4.0.0"
+    "system-sleep": "^1.3.6"
   }
 }
