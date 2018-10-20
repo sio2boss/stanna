@@ -7,12 +7,13 @@ const Slack = require('slack-node')
 const fs = require('fs')
 const jsonfile = require('jsonfile')
 const readline = require('readline')
+const os = require('os')
 require('shelljs/global')
 
 /*
  * Program arguments
  */
-const args = neodoc.run(`
+const usage = `
 Usage:
   stanna --help
   stanna init
@@ -21,8 +22,12 @@ Usage:
 Example, try:
   stanna "Just finished what you asked me todo, shutting myself down --computer"
 Options:
-  -h, --help
-`)
+  -h, --help    Show this screen.
+  --version     Show version.
+  --test        Use to send slack message but not actually shutdown the machine
+  <message>     A double quoted message that will be sent to slack along with annotations
+`
+const args = neodoc.run(usage)
 configPath = getUserHome() + '/.stanna.json'
 
 
@@ -33,50 +38,73 @@ function getUserHome() {
 
 
 // Shutdown procedure -----------------------------------------------------------
-function stanna(configPath, args) {
+function stanna(config, slack, args) {
 
-  // Read configuration from file
-  jsonfile.readFile(configPath, function(err, config) {
-    if (err) {
-      console.log(chalk.red("Unable to read configuration from:", file))
-      console.log('Try running \'stanna init\'')
+  if (!args['<message>']) {
+    console.log(chalk.red("Message not provided...exiting"))
+    console.log(usage)
+    exit(1)
+  }
+
+  let message = args['<message>']
+  let fields = [
+    {
+      title: 'Hostname',
+      value: os.hostname(),
+      short: true
+    },{
+      title: 'Timeout',
+      value: config.waitTimeBeforeHalt + ' seconds',
+      short: true
+    },{
+      title: 'Exit Status',
+      value: exec('echo $?', {silent:true}).stdout,
+      color: '#f45642',
+      short: true
+    }
+  ]
+
+  if (args['--test']) {
+    fields.push({
+      title: 'Testing',
+      value: 'enabled',
+      color: '#f4e842',
+      short: true
+    })
+  }
+
+  // 1. Post to slack
+  slack.webhook({
+    channel: config.channel,
+    username: 'Stanna',
+    text: message,
+    attachments: [{
+      fields: fields,
+    }],
+    icon_emoji: ':hand:'
+  }, function(err, response) {
+    if (err || !response || response.statusCode > 300) {
+      console.log(chalk.red('Unable to post message to slack', err, JSON.stringify(response)))
       exit(1)
     }
 
-    slack = new Slack()
-    slack.setWebhook(config.webhook)
+    console.log(chalk.green('Sent message to Slack'))
 
-    // 1. Post to slack
-    slack.webhook({
-      channel: config.channel,
-      username: 'webhookbot',
-      text: args['<message>'],
-      icon_emoji: ':ghost:'
-    }, function(err, response) {
-      if (err || !response || response.statusCode > 300) {
-        console.log(chalk.red('Unable to post message to slack', err, response))
-        exit(1)
-      }
+    if (args['--test']) {
+      console.log(chalk.yellow('Exiting because this was a test'))
+      exit(0)
+    }
 
-      console.log(chalk.green('Sent message to Slack'))
+    // 2. Wait specified time
+    console.log(chalk.green('Waiting ' + config.waitTimeBeforeHalt + ' seconds before system halt'))
+    sleep(parseInt(config.waitTimeBeforeHalt) * 1000)
 
-      if (!args['--test']) {
-        console.log(chalk.yellow('Exiting because this was a test'))
-        exit(0)
-      }
-
-      // 2. Wait specified time
-      console.log(chalk.green('Waiting ' + config.waitTimeBeforeHalt + ' seconds before system halt'))
-      sleep.sleep(parseInt(config.waitTimeBeforeHalt))
-
-      // 3. Shutdown system
-      console.log(chalk.green('Initiating shutdown'))
-      if (exec('echo "sudo shutdown -h now"').code !== 0) {
-        console.log(chalk.red('ERROR Shutdown command failed'))
-        exit(1)
-      }
-
-    })
+    // 3. Shutdown system
+    console.log(chalk.yellow('Initiating shutdown'))
+    if (exec('sudo shutdown -h now', {silent:true}).code !== 0) {
+      console.log(chalk.red('ERROR Shutdown command failed'))
+      exit(1)
+    }
 
   })
 
@@ -142,24 +170,63 @@ function wizard(configPath) {
 }
 
 
-if (args['abort']) {
-
-  // Abort
-  console.log(chalk.green('Aborting shutdown'))
-  if (exec('echo "sudo killall stanna"').code !== 0) {
-    console.log(chalk.red('ERROR could not abort'))
-    exit(1)
-  }
-
-} else if (!fs.existsSync(configPath) || args['init']) {
+if (!fs.existsSync(configPath) || args['init']) {
 
   // So no configuration
-  console.log(chalk.yellow('No configuration found at: ', configPath))
+  if (!args['init']) {
+    console.log(chalk.yellow('No configuration found at: ', configPath))
+  }
   wizard(configPath)
 
 } else {
 
-  // Shutdown
-  stanna(configPath, args)
-  
+  // Read configuration from file
+  jsonfile.readFile(configPath, function(err, config) {
+
+    if (err) {
+      console.log(chalk.red("Unable to read configuration from:", file))
+      console.log('Try running \'stanna init\'')
+      exit(1)
+    }
+
+    if (args['abort']) {
+
+      // Abort
+      console.log(chalk.green('Aborting shutdown'))
+      if (exec("pkill -o -e -SIGINT -f stanna").code !== 0) {
+        console.log(chalk.red('ERROR could not abort'))
+        exit(1)
+      }
+
+    } else {
+    
+      // Setup slack
+      slack = new Slack()
+      slack.setWebhook(config.webhook)
+      
+      // Enable Abort
+      process.on('SIGINT', function() {
+          console.log("Caught interrupt signal");
+
+          slack.webhook({
+            channel: config.channel,
+            username: 'Stanna',
+            text: "*Shutdown Aborted*",
+            icon_emoji: ':hand:'
+          }, function(err, response) {
+            if (err || !response || response.statusCode > 300) {
+              console.log(chalk.red('Unable to post abort message to slack', err, JSON.stringify(response)))
+              exit(1)
+            }
+
+            process.exit();
+          })
+      });
+
+      // Shutdown
+      stanna(config, slack, args)
+      
+    }
+  })
+
 }
