@@ -1,6 +1,6 @@
 {
   "name": "stanna",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "Halt your machine after sending notification and waiting specified time limit",
   "main": "index.js",
   "scripts": {

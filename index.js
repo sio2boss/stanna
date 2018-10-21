@@ -46,8 +46,8 @@ function stanna(config, slack, args) {
     exit(1)
   }
 
-  let message = args['<message>']
-  let fields = [
+  var message = args['<message>']
+  var fields = [
     {
       title: 'Hostname',
       value: os.hostname(),
